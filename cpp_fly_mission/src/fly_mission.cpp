@@ -50,7 +50,8 @@ namespace mission
         }
 
         auto system = getSystem(*_mavsdk);
-        //auto offboard = Offboard{system};
+
+        //_offboard = mavsdk::Offboard{system};
 
         if(system == nullptr)
         {
@@ -66,20 +67,8 @@ namespace mission
         _srvUpload = this->create_service<std_srvs::srv::Trigger>("mission_flier/upload", std::bind(&FlyMission::cbUpload, this, _1, _2));
         _srvTakeOff = this->create_service<std_srvs::srv::Trigger>("mission_flier/take_off", std::bind(&FlyMission::cbTakeOff, this, _1, _2));
         _srvStartMission = this->create_service<std_srvs::srv::Trigger>("mission_flier/start_mission", std::bind(&FlyMission::cbStartMission, this, _1, _2));
-
-        //_velocitySub = this->create_subscription<geometry_msgs::msg::Twist>("mission_flier/velocity", 10, std::bind(&FlyMission::cbVelocity, this, _1));
-        //_depthSub = this->create_subscription<sensor_msgs::msg::Image>("mission_flier/depth", 10, std::bind(&FlyMission::cbDepth, this, _1));
+        _depthSub = this->create_subscription<sensor_msgs::msg::Image>("mission_flier/depth", 10, std::bind(&FlyMission::cbDepth, this, _1));
     }
-
-    /*void FlyMission::cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg)
-    {
-        mavsdk::Mission::VelocityBodyYawspeed velocity;
-
-        velocity.forward_m_s = aMsg->linear.x;
-        velocity.yawspeed_deg_s = aMsg->angular.z;
-
-        _mission.get()->set_velocity_body(velocity);
-    }*/
 
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
     {
@@ -137,6 +126,8 @@ namespace mission
         float obstacle_distance = depthValue;   //vzdalenost prekazky
         float obstacle_threshold = 0.5;         //min. vzdalenost prekazky
 
+        _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
+        
         if(obstacle_distance < obstacle_threshold){
             std::cout << "Obstacle detected! Pausing mission.\n";
             const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
@@ -146,24 +137,36 @@ namespace mission
             }
             std::cout << "Mission paused.\n";
 
-            //Offboard::Result offboard_result = offboard.start();
+            mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
+
+            if(offboard_result != mavsdk::Offboard::Result::Success) {
+                std::cerr << "Offboard start failed: " << offboard_result << '\n';
+                return;
+            }
+
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 45.0f});  //otoceni po smeru hodin, 45 stupnu/s
+            sleep_for(seconds(2));
+            _offboard.get()->set_velocity_body({5.0f, 0.0f, 0.0f, -10.0f}); //let dopredu s otacenim
+
+            sleep_for(seconds(5));  //chvili pockat, aby se dron vzdalil od cary
+
+            if(distance_to_line < 0.1) {   //pokud se dron opet nachazi na puvodni care, znova se pokracuje v misi
+                std::cout << "Obstacle avoided, returning to original course.\n";
+                mavsdk::Offboard::Result offboard_result = _offboard.get()->stop();    //switch z offboard modu
+
+                if(offboard_result != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard stop failed: " << offboard_result << '\n';
+                    return;
+                }
+
+                const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
+
+                if (start_mission_again_result != mavsdk::Mission::Result::Success) {
+                    std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
+                }
+            }
         }
-
-
-
-
-
-        /*
-        // Pause for 5 seconds.
-        sleep_for(seconds(5));
-
-        // Then continue.
-        auto start_mission_again_result = _mission.get()->start_mission();
-        if (start_mission_again_result != mavsdk::Mission::Result::Success) {
-            std::cerr << "Starting mission again failed: " << start_mission_again_result << '\n';
-            //return 1;
-        }*/
-
+        
         while (!_mission.get()->is_mission_finished().second) {
             sleep_for(seconds(1));
         }
