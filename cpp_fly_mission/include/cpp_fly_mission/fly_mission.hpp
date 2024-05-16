@@ -51,7 +51,6 @@ namespace mission
         std::vector<double> p2;
         std::vector<double> p_d;
         std::atomic<float> depthValue;
-        //Offboard offboard;
 
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
         void cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg);
