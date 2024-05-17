@@ -52,13 +52,15 @@ namespace mission
         std::atomic<float> next_waypoint_longitude;
         std::atomic<float> last_waypoint_latitude;
         std::atomic<float> last_waypoint_longitude;
+        std::atomic<float> dron_latitude;
+        std::atomic<float> dron_longitude;
 
         std::vector<float> p1;
         std::vector<float> p2;
         std::vector<float> p_d;
 
-        std::atomic<float> width;
-        std::atomic<float> height;
+        std::atomic<uint32_t> width;
+        std::atomic<uint32_t> height;
         std::atomic<float> depthValue;
 
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
@@ -79,6 +81,11 @@ namespace mission
 
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _depthSub;
         void cbDepth(const sensor_msgs::msg::Image::SharedPtr msg);
+
+        rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr _pathPub;
+        rclcpp::TimerBase::SharedPtr _timer;
+
+        void publishPath();
 
         void avoid();
     };
