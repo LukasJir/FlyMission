@@ -83,9 +83,30 @@ namespace mission
         pose_stamped.header.stamp = this->get_clock()->now();
         pose_stamped.header.frame_id = "my_frame";
 
+        for (int i = 0; i < 10; ++i)
+        {
+            geometry_msgs::msg::PoseStamped pose_stamped;
+            pose_stamped.pose.position.x = 0.0;
+            pose_stamped.pose.position.y = 0.0;
+            pose_stamped.pose.position.z = i;
+            pose_stamped.pose.orientation.w = 1.0;
+            pose_stamped.pose.orientation.x = 0.0;
+            pose_stamped.pose.orientation.y = 0.0;
+            pose_stamped.pose.orientation.z = 0.0;
+            path_msg.poses.push_back(pose_stamped);
+        }
+
+        _pathPub->publish(path_msg);
+
+/*
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        pose_stamped.header.stamp = this->get_clock()->now();
+        pose_stamped.header.frame_id = "my_frame";
+
         pose_stamped.pose.position.x = dron_latitude;
         pose_stamped.pose.position.y = dron_longitude;
         pose_stamped.pose.position.z = 50.0;
+
         pose_stamped.pose.orientation.w = 1.0;
         pose_stamped.pose.orientation.x = 0.0;
         pose_stamped.pose.orientation.y = 0.0;
@@ -93,7 +114,7 @@ namespace mission
 
         path_msg.poses.push_back(pose_stamped);
 
-        _pathPub->publish(path_msg);
+        _pathPub->publish(path_msg); */
     }
 
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
@@ -110,21 +131,30 @@ namespace mission
 
     void FlyMission::avoid()
     {
+        std::cout << "drone_start_latitude:" << drone_start_pos.latitude_deg << '\n';
+        std::cout << "drone_start_longitude:" << drone_start_pos.longitude_deg << '\n';
+        
         mavsdk::Mission::MissionItem next_waypoint = mission_items[waypoint];   //nasledujici waypoint
-        next_waypoint_latitude = next_waypoint.latitude_deg;       //zem. sirka nasledujiciho waypointu
-        next_waypoint_longitude = next_waypoint.longitude_deg;     //zem. vyska nasledujiciho waypointu
+        next_waypoint_latitude = next_waypoint.latitude_deg;                    //zem. sirka nasledujiciho waypointu
+        next_waypoint_longitude = next_waypoint.longitude_deg;                  //zem. vyska nasledujiciho waypointu
 
-        mavsdk::Mission::MissionItem last_waypoint = mission_items[waypoint-1];     //predchozi waypoint
-        last_waypoint_latitude = last_waypoint.latitude_deg;           //zem. sirka predchoziho waypointu
-        last_waypoint_longitude = last_waypoint.longitude_deg;         //zem. vyska predchoziho waypointu
+        mavsdk::Mission::MissionItem last_waypoint = mission_items[waypoint-1];     //predchozi waypoint       
 
-        const auto drone_pos = _telemetry->position();
-        dron_latitude = drone_pos.latitude_deg;     //zem. sirka dronu
-        dron_longitude = drone_pos.longitude_deg;   //zem. vyska dronu
+        if(waypoint == 0){
+            last_waypoint_latitude = drone_start_pos.latitude_deg;      //zem. sirka startovni pozice
+            last_waypoint_longitude = drone_start_pos.longitude_deg;    //zem. vyska startovni pozice
+        }else{
+            last_waypoint_latitude = last_waypoint.latitude_deg;        //zem. sirka predchoziho waypointu
+            last_waypoint_longitude = last_waypoint.longitude_deg;      //zem. vyska predchoziho waypointu
+        }
+
+        drone_pos = _telemetry->position();
+        drone_latitude = drone_pos.latitude_deg;     //aktualni zem. sirka dronu
+        drone_longitude = drone_pos.longitude_deg;   //aktualni zem. vyska dronu
 
         p1 = {last_waypoint_latitude, last_waypoint_longitude};
         p2 = {next_waypoint_latitude, next_waypoint_longitude};
-        p_d = {dron_latitude, dron_longitude};
+        p_d = {drone_latitude, drone_longitude};
 
         float citatel = std::fabs((p2[0]-p1[0])*(p_d[1]-p1[1]) - (p_d[0]-p1[0])*(p2[1]-p1[1]));
         float jmenovatel = std::sqrt(std::pow(p2[0]-p1[0],2)+std::pow(p2[1]-p1[1],2));
@@ -135,8 +165,8 @@ namespace mission
         std::cout << "next_waypoint_longitude:" << next_waypoint_longitude << '\n';
         std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
         std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
-        std::cout << "dron_latitude:" << dron_latitude << '\n';
-        std::cout << "dron_longitude:" << dron_longitude << '\n';
+        std::cout << "drone_latitude:" << drone_latitude << '\n';
+        std::cout << "drone_longitude:" << drone_longitude << '\n';
         std::cout << "distance_to_line:" << distance_to_line << '\n';
         
         float obstacle_distance = depthValue;   //vzdalenost prekazky (hloubka stredu image)
@@ -207,6 +237,8 @@ namespace mission
 
         _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
+        drone_start_pos = _telemetry->position();    //startovni pozice dronu
+
         mavsdk::Mission::Result start_mission_result = _mission.get()->start_mission();     //start mise
         if (start_mission_result != mavsdk::Mission::Result::Success) {
             std::cerr << "Starting mission failed: " << start_mission_result << '\n';
@@ -243,19 +275,9 @@ namespace mission
         std::cout << "Creating and uploading mission\n";
 
         mission_items.push_back(make_mission_item(
-            37.4122,
-            -121.9990,
-            20.0f,      //14 pro prekazky
-            3.0f,
-            false,
-            -90.0f,
-            30.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));
-
-        mission_items.push_back(make_mission_item(
             37.4128,
             -121.9995,
-            20.0f,
+            20.0f,      //14 pro prekazky
             10.0f,
             false,
             -90.0f,
@@ -281,46 +303,6 @@ namespace mission
             -45.0f,
             0.0f,
             mavsdk::Mission::MissionItem::CameraAction::None));
-
- /*       mission_items.push_back(make_mission_item(
-            37.4118,
-            -121.9990,
-            7.0f,
-            10.0f,
-            false,
-            20.0f,
-            60.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));
-
-        mission_items.push_back(make_mission_item(
-            37.4116,
-            -121.9987,
-            25.0f,
-            10.0f,
-            true,
-            0.0f,
-            -60.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));
-
-        mission_items.push_back(make_mission_item(
-            37.4124,
-            -121.9982,
-            35.0f,
-            10.0f,
-            true,
-            -45.0f,
-            0.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));
-            
-        mission_items.push_back(make_mission_item(
-            37.4127,
-            -121.9995,
-            25.0f,
-            10.0f,
-            false,
-            -90.0f,
-            30.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None)); */
 
         mavsdk::Mission::MissionPlan mission_plan{};
         mission_plan.mission_items = mission_items;
@@ -371,7 +353,7 @@ namespace mission
             [this, &in_air_promise](mavsdk::Telemetry::LandedState state) {
                 if(state == mavsdk::Telemetry::LandedState::InAir)
                 {
-                    std::cout << "Taking off has finished\n.";
+                    std::cout << "Taking off has finished.\n";
                     _telemetry.get()->subscribe_landed_state(nullptr);
                     in_air_promise.set_value();
                 }
