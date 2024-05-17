@@ -51,8 +51,6 @@ namespace mission
 
         auto system = getSystem(*_mavsdk);
 
-        //_offboard = mavsdk::Offboard{system};
-
         if(system == nullptr)
         {
             RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Timed out waiting for system");
@@ -63,6 +61,7 @@ namespace mission
         _action = std::make_unique<mavsdk::Action>(system);
         _telemetry = std::make_shared<mavsdk::Telemetry>(system);
         _mission = std::make_unique<mavsdk::Mission>(system);
+        _offboard = std::make_unique<mavsdk::Offboard>(system);
 
         _srvUpload = this->create_service<std_srvs::srv::Trigger>("mission_flier/upload", std::bind(&FlyMission::cbUpload, this, _1, _2));
         _srvTakeOff = this->create_service<std_srvs::srv::Trigger>("mission_flier/take_off", std::bind(&FlyMission::cbTakeOff, this, _1, _2));
@@ -72,70 +71,63 @@ namespace mission
 
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
     {
-        uint32_t width = msg->width;
-        uint32_t height = msg->height;
+        width = msg->width;
+        height = msg->height;
         uint32_t x_center = width/2;
         uint32_t y_center = height/2;
         const float* depthData = reinterpret_cast<const float*>(msg->data.data());
         size_t index = y_center * width + x_center;
-        float depthValue = depthData[index];
+        depthValue = depthData[index];
     }
 
-    void FlyMission::cbStartMission(const std::shared_ptr<std_srvs::srv::Trigger::Request> aRequest, const std::shared_ptr<std_srvs::srv::Trigger::Response> aResponse)
+    void FlyMission::avoid()
     {
-        std::atomic<bool> want_to_pause{false};
-        // Before starting the mission, we want to be sure to subscribe to the mission progress.
-        _mission.get()->subscribe_mission_progress([this, &want_to_pause](mavsdk::Mission::MissionProgress mission_progress) {
-            std::cout << "Mission status update: " << mission_progress.current << " / "
-                    << mission_progress.total << '\n';
-
-            if (mission_progress.current >= 2) {
-                // We can only set a flag here. If we do more request inside the callback,
-                // we risk blocking the system.
-                want_to_pause = true;
-            }
-            waypoint = mission_progress.current;    //index nasledujiciho waypointu
-        });
-
-        mavsdk::Mission::Result start_mission_result = _mission.get()->start_mission();     //start mise
-        if (start_mission_result != mavsdk::Mission::Result::Success) {
-            std::cerr << "Starting mission failed: " << start_mission_result << '\n';
-            //return 1;
-        }
-
-        mavsdk::Mission::MissionItem current_waypoint = mission_items[waypoint];    //nasledujici waypoint
-        const double next_waypoint_latitude = current_waypoint.latitude_deg;     //zem. sirka nasledujiciho waypointu
-        const double next_waypoint_longitude = current_waypoint.longitude_deg;   //zem. vyska nasledujiciho waypointu
+        mavsdk::Mission::MissionItem next_waypoint = mission_items[waypoint];   //nasledujici waypoint
+        const float next_waypoint_latitude = next_waypoint.latitude_deg;       //zem. sirka nasledujiciho waypointu
+        const float next_waypoint_longitude = next_waypoint.longitude_deg;     //zem. vyska nasledujiciho waypointu
 
         mavsdk::Mission::MissionItem last_waypoint = mission_items[waypoint-1];     //predchozi waypoint
-        const double last_waypoint_latitude = last_waypoint.latitude_deg;     //zem. sirka predchoziho waypointu
-        const double last_waypoint_longitude = last_waypoint.longitude_deg;   //zem. vyska predchoziho waypointu
+        const float last_waypoint_latitude = last_waypoint.latitude_deg;           //zem. sirka predchoziho waypointu
+        const float last_waypoint_longitude = last_waypoint.longitude_deg;         //zem. vyska predchoziho waypointu
 
         const auto drone_pos = _telemetry->position();
-        const double dron_latitude = drone_pos.latitude_deg;     //zem. sirka dronu
-        const double dron_longitude = drone_pos.longitude_deg;   //zem. vyska dronu
+        const float dron_latitude = drone_pos.latitude_deg;     //zem. sirka dronu
+        const float dron_longitude = drone_pos.longitude_deg;   //zem. vyska dronu
 
         p1 = {last_waypoint_latitude, last_waypoint_longitude};
         p2 = {next_waypoint_latitude, next_waypoint_longitude};
         p_d = {dron_latitude, dron_longitude};
 
-        double citatel = std::fabs((p2[0]-p1[0])*(p_d[1]-p1[1]) - (p_d[0]-p1[0])*(p2[1]-p1[1]));
-        double jmenovatel = std::sqrt(std::pow(p2[0]-p1[0],2)+std::pow(p2[1]-p1[1],2));
-        double distance_to_line = citatel/jmenovatel;   //vzdalenost dronu od cary
+        float citatel = std::fabs((p2[0]-p1[0])*(p_d[1]-p1[1]) - (p_d[0]-p1[0])*(p2[1]-p1[1]));
+        float jmenovatel = std::sqrt(std::pow(p2[0]-p1[0],2)+std::pow(p2[1]-p1[1],2));
+        float distance_to_line = citatel/jmenovatel;   //vzdalenost dronu od cary
 
-        float obstacle_distance = depthValue;   //vzdalenost prekazky
-        float obstacle_threshold = 0.5;         //min. vzdalenost prekazky
-
-        _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
+        std::cout << "waypoint:" << waypoint << '\n';
+        std::cout << "next_waypoint_latitude:" << next_waypoint_latitude << '\n';
+        std::cout << "next_waypoint_longitude:" << next_waypoint_longitude << '\n';
+        std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
+        std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
+        std::cout << "dron_latitude:" << dron_latitude << '\n';
+        std::cout << "dron_longitude:" << dron_longitude << '\n';
+        std::cout << "distance_to_line:" << distance_to_line << '\n';
         
-        if(obstacle_distance < obstacle_threshold){
+        float obstacle_distance = depthValue;   //vzdalenost prekazky (hloubka stredu image)
+        //float obstacle_distance = 0.01;
+        float obstacle_threshold = 0.1;         //min. vzdalenost prekazky
+        
+        float sirka = width;
+        std::cout << "depthValue:" << obstacle_distance << '\n';
+        std::cout << "width(cbDepth):" << sirka << '\n';
+
+/*
+        if(obstacle_distance > obstacle_threshold){
             std::cout << "Obstacle detected! Pausing mission.\n";
             const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
 
             if (pause_mission_result != mavsdk::Mission::Result::Success) {
                 std::cerr << "Failed to pause mission:" << pause_mission_result << '\n';
             }
-            std::cout << "Mission paused.\n";
+            std::cout << "Mission paused, switching to offboard mode.\n";
 
             mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
 
@@ -145,6 +137,7 @@ namespace mission
             }
 
             _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 45.0f});  //otoceni po smeru hodin, 45 stupnu/s
+            std::cout << "Avoiding obstacle...\n";
             sleep_for(seconds(2));
             _offboard.get()->set_velocity_body({5.0f, 0.0f, 0.0f, -10.0f}); //let dopredu s otacenim
 
@@ -165,12 +158,38 @@ namespace mission
                     std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
                 }
             }
+        }*/
+    }
+
+    void FlyMission::cbStartMission(const std::shared_ptr<std_srvs::srv::Trigger::Request> aRequest, const std::shared_ptr<std_srvs::srv::Trigger::Response> aResponse)
+    {
+        std::atomic<bool> want_to_pause{false};
+        // Before starting the mission, we want to be sure to subscribe to the mission progress.
+        _mission.get()->subscribe_mission_progress([this, &want_to_pause](mavsdk::Mission::MissionProgress mission_progress) {
+            std::cout << "Mission status update: " << mission_progress.current << " / "
+                    << mission_progress.total << '\n';
+
+            if (mission_progress.current >= 2) {
+                // We can only set a flag here. If we do more request inside the callback,
+                // we risk blocking the system.
+                want_to_pause = true;
+            }
+            waypoint = mission_progress.current;    //index nasledujiciho waypointu
+        });
+
+        _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
+
+        mavsdk::Mission::Result start_mission_result = _mission.get()->start_mission();     //start mise
+        if (start_mission_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "Starting mission failed: " << start_mission_result << '\n';
+            //return 1;
         }
         
         while (!_mission.get()->is_mission_finished().second) {
+            avoid();
             sleep_for(seconds(1));
         }
-
+/*
         // We are done, and can do RTL to go home.
         std::cout << "Commanding RTL...\n";
         const Action::Result rtl_result = _action.get()->return_to_launch();
@@ -179,7 +198,7 @@ namespace mission
             //return 1;
         }
         std::cout << "Commanded RTL.\n";
-
+*/
         // We need to wait a bit, otherwise the armed state might not be correct yet.
         sleep_for(seconds(2));
 
@@ -194,11 +213,49 @@ namespace mission
     {
         std::cout << "Creating and uploading mission\n";
 
-        //std::vector<mavsdk::Mission::MissionItem> mission_items;
+        mission_items.push_back(make_mission_item(
+            37.4122,
+            -121.9990,
+            14.0f,
+            3.0f,
+            false,
+            -90.0f,
+            30.0f,
+            mavsdk::Mission::MissionItem::CameraAction::None));
 
         mission_items.push_back(make_mission_item(
-            142.5882,
-            58.0010,
+            37.4128,
+            -121.9995,
+            14.0f,
+            10.0f,
+            false,
+            -90.0f,
+            30.0f,
+            mavsdk::Mission::MissionItem::CameraAction::None));
+
+        mission_items.push_back(make_mission_item(
+            37.4137,
+            -121.9993,
+            14.0f,
+            10.0f,
+            false,
+            -90.0f,
+            30.0f,
+            mavsdk::Mission::MissionItem::CameraAction::None));
+
+        mission_items.push_back(make_mission_item(
+            37.4125,
+            -121.9981,
+            14.0f,
+            10.0f,
+            true,
+            -45.0f,
+            0.0f,
+            mavsdk::Mission::MissionItem::CameraAction::None));
+
+ /*       mission_items.push_back(make_mission_item(
+            37.4118,
+            -121.9990,
             7.0f,
             10.0f,
             false,
@@ -207,8 +264,8 @@ namespace mission
             mavsdk::Mission::MissionItem::CameraAction::None));
 
         mission_items.push_back(make_mission_item(
-            142.5884,
-            58.0013,
+            37.4116,
+            -121.9987,
             25.0f,
             10.0f,
             true,
@@ -217,43 +274,28 @@ namespace mission
             mavsdk::Mission::MissionItem::CameraAction::None));
 
         mission_items.push_back(make_mission_item(
-            142.5876,
-            58.0018,
-            30.0f,
+            37.4124,
+            -121.9982,
+            35.0f,
             10.0f,
             true,
             -45.0f,
             0.0f,
             mavsdk::Mission::MissionItem::CameraAction::None));
-
+            
         mission_items.push_back(make_mission_item(
-            142.5873,
-            58.0000,
-            10.0f,
+            37.4127,
+            -121.9995,
+            25.0f,
             10.0f,
             false,
             -90.0f,
             30.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));
-
-        /*mission_items.push_back(make_mission_item(
-            142.5879,
-            58.0009,
-            15.0f,
-            10.0f,
-            false,
-            -45.0f,
-            -30.0f,
-            mavsdk::Mission::MissionItem::CameraAction::None));*/
+            mavsdk::Mission::MissionItem::CameraAction::None)); */
 
         mavsdk::Mission::MissionPlan mission_plan{};
         mission_plan.mission_items = mission_items;
         const mavsdk::Mission::Result upload_result = _mission.get()->upload_mission(mission_plan);
-
-        /*if (upload_result != Mission::Result::Success) {
-            std::cerr << "Mission upload failed: " << upload_result << ", exiting.\n";
-            //return 1;
-        }*/
     }
 
     void FlyMission::cbUpload(const std::shared_ptr<std_srvs::srv::Trigger::Request> aRequest, const std::shared_ptr<std_srvs::srv::Trigger::Response> aResponse)
