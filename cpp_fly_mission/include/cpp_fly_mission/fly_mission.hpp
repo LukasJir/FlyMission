@@ -52,8 +52,11 @@ namespace mission
         std::atomic<float> next_waypoint_longitude;
         std::atomic<float> last_waypoint_latitude;
         std::atomic<float> last_waypoint_longitude;
-        std::atomic<float> dron_latitude;
-        std::atomic<float> dron_longitude;
+
+        mavsdk::Telemetry::Position drone_start_pos;
+        mavsdk::Telemetry::Position drone_pos;
+        std::atomic<float> drone_latitude;
+        std::atomic<float> drone_longitude;
 
         std::vector<float> p1;
         std::vector<float> p2;
