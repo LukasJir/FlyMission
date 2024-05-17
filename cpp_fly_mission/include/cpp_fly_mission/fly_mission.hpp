@@ -46,10 +46,19 @@ namespace mission
         std::shared_ptr<mavsdk::Mission> _mission;
         std::unique_ptr<mavsdk::Offboard> _offboard;
         std::vector<mavsdk::Mission::MissionItem> mission_items;
+
         std::atomic<int> waypoint;
-        std::vector<double> p1;
-        std::vector<double> p2;
-        std::vector<double> p_d;
+        std::atomic<float> next_waypoint_latitude;
+        std::atomic<float> next_waypoint_longitude;
+        std::atomic<float> last_waypoint_latitude;
+        std::atomic<float> last_waypoint_longitude;
+
+        std::vector<float> p1;
+        std::vector<float> p2;
+        std::vector<float> p_d;
+
+        std::atomic<float> width;
+        std::atomic<float> height;
         std::atomic<float> depthValue;
 
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
@@ -70,5 +79,7 @@ namespace mission
 
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _depthSub;
         void cbDepth(const sensor_msgs::msg::Image::SharedPtr msg);
+
+        void avoid();
     };
 }
