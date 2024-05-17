@@ -62,15 +62,43 @@ namespace mission
         _telemetry = std::make_shared<mavsdk::Telemetry>(system);
         _mission = std::make_unique<mavsdk::Mission>(system);
         _offboard = std::make_unique<mavsdk::Offboard>(system);
+        //_image = std::make_shared<sensor_msgs::msg::Image>();
 
         _srvUpload = this->create_service<std_srvs::srv::Trigger>("mission_flier/upload", std::bind(&FlyMission::cbUpload, this, _1, _2));
         _srvTakeOff = this->create_service<std_srvs::srv::Trigger>("mission_flier/take_off", std::bind(&FlyMission::cbTakeOff, this, _1, _2));
         _srvStartMission = this->create_service<std_srvs::srv::Trigger>("mission_flier/start_mission", std::bind(&FlyMission::cbStartMission, this, _1, _2));
         _depthSub = this->create_subscription<sensor_msgs::msg::Image>("mission_flier/depth", 10, std::bind(&FlyMission::cbDepth, this, _1));
+        _pathPub = this->create_publisher<nav_msgs::msg::Path>("mission_flier/path", 10); 
+        //_timer = this->create_wall_timer(std::chrono::milliseconds(500), std::bind(&FlyMission::publishPath, this));
+    }
+    
+    void FlyMission::publishPath()
+    {
+        //RCLCPP_INFO(this->get_logger(), "Publishing path...");
+        nav_msgs::msg::Path path_msg;
+        path_msg.header.stamp = this->get_clock()->now();
+        path_msg.header.frame_id = "my_frame";
+
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        pose_stamped.header.stamp = this->get_clock()->now();
+        pose_stamped.header.frame_id = "my_frame";
+
+        pose_stamped.pose.position.x = dron_latitude;
+        pose_stamped.pose.position.y = dron_longitude;
+        pose_stamped.pose.position.z = 50.0;
+        pose_stamped.pose.orientation.w = 1.0;
+        pose_stamped.pose.orientation.x = 0.0;
+        pose_stamped.pose.orientation.y = 0.0;
+        pose_stamped.pose.orientation.z = 0.0;
+
+        path_msg.poses.push_back(pose_stamped);
+
+        _pathPub->publish(path_msg);
     }
 
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
     {
+        RCLCPP_INFO(this->get_logger(), "Getting depth...");
         width = msg->width;
         height = msg->height;
         uint32_t x_center = width/2;
@@ -83,16 +111,16 @@ namespace mission
     void FlyMission::avoid()
     {
         mavsdk::Mission::MissionItem next_waypoint = mission_items[waypoint];   //nasledujici waypoint
-        const float next_waypoint_latitude = next_waypoint.latitude_deg;       //zem. sirka nasledujiciho waypointu
-        const float next_waypoint_longitude = next_waypoint.longitude_deg;     //zem. vyska nasledujiciho waypointu
+        next_waypoint_latitude = next_waypoint.latitude_deg;       //zem. sirka nasledujiciho waypointu
+        next_waypoint_longitude = next_waypoint.longitude_deg;     //zem. vyska nasledujiciho waypointu
 
         mavsdk::Mission::MissionItem last_waypoint = mission_items[waypoint-1];     //predchozi waypoint
-        const float last_waypoint_latitude = last_waypoint.latitude_deg;           //zem. sirka predchoziho waypointu
-        const float last_waypoint_longitude = last_waypoint.longitude_deg;         //zem. vyska predchoziho waypointu
+        last_waypoint_latitude = last_waypoint.latitude_deg;           //zem. sirka predchoziho waypointu
+        last_waypoint_longitude = last_waypoint.longitude_deg;         //zem. vyska predchoziho waypointu
 
         const auto drone_pos = _telemetry->position();
-        const float dron_latitude = drone_pos.latitude_deg;     //zem. sirka dronu
-        const float dron_longitude = drone_pos.longitude_deg;   //zem. vyska dronu
+        dron_latitude = drone_pos.latitude_deg;     //zem. sirka dronu
+        dron_longitude = drone_pos.longitude_deg;   //zem. vyska dronu
 
         p1 = {last_waypoint_latitude, last_waypoint_longitude};
         p2 = {next_waypoint_latitude, next_waypoint_longitude};
@@ -187,6 +215,7 @@ namespace mission
         
         while (!_mission.get()->is_mission_finished().second) {
             avoid();
+            publishPath();
             sleep_for(seconds(1));
         }
 /*
@@ -216,7 +245,7 @@ namespace mission
         mission_items.push_back(make_mission_item(
             37.4122,
             -121.9990,
-            14.0f,
+            20.0f,      //14 pro prekazky
             3.0f,
             false,
             -90.0f,
@@ -226,7 +255,7 @@ namespace mission
         mission_items.push_back(make_mission_item(
             37.4128,
             -121.9995,
-            14.0f,
+            20.0f,
             10.0f,
             false,
             -90.0f,
@@ -236,7 +265,7 @@ namespace mission
         mission_items.push_back(make_mission_item(
             37.4137,
             -121.9993,
-            14.0f,
+            20.0f,
             10.0f,
             false,
             -90.0f,
@@ -246,7 +275,7 @@ namespace mission
         mission_items.push_back(make_mission_item(
             37.4125,
             -121.9981,
-            14.0f,
+            20.0f,
             10.0f,
             true,
             -45.0f,
