@@ -71,7 +71,7 @@ namespace mission
         _depthPub = this->create_publisher<sensor_msgs::msg::Image>("mission_flier/depth", 10);
         _pathPub = this->create_publisher<nav_msgs::msg::Path>("mission_flier/path", 10); 
         
-        //_timer = this->create_wall_timer(std::chrono::milliseconds(500), std::bind(&FlyMission::cbTimer, this));
+        //_timer = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&FlyMission::position, this));
     }
 
     void FlyMission::publishDepth()
@@ -137,10 +137,11 @@ namespace mission
         depthValue = depthData[index];
     }
 
-    void FlyMission::avoid()
+    void FlyMission::position()
     {
-        std::cout << "drone_start_latitude:" << drone_start_pos.latitude_deg << '\n';
-        std::cout << "drone_start_longitude:" << drone_start_pos.longitude_deg << '\n';
+        std::cout << "waypoint:" << waypoint << '\n';
+        //std::cout << "drone_start_latitude:" << drone_start_pos.latitude_deg << '\n';
+        //std::cout << "drone_start_longitude:" << drone_start_pos.longitude_deg << '\n';
         
         mavsdk::Mission::MissionItem next_waypoint = mission_items[waypoint];   //nasledujici waypoint
         next_waypoint_latitude = next_waypoint.latitude_deg;                    //zem. sirka nasledujiciho waypointu
@@ -174,31 +175,39 @@ namespace mission
 
         float citatel = std::fabs((x2-x1)*(y_d-y1) - (x_d-x1)*(y2-y1));
         float jmenovatel = std::sqrt(std::pow(x2-x1,2)+std::pow(y2-y1,2));
-        float distance_to_line = citatel/jmenovatel;            //vzdalenost dronu od cary
+        distance_to_line = citatel/jmenovatel;            //vzdalenost dronu od cary
 
-        std::cout << "waypoint:" << waypoint << '\n';
-        std::cout << "next_waypoint_latitude:" << next_waypoint_latitude << '\n';
-        std::cout << "next_waypoint_longitude:" << next_waypoint_longitude << '\n';
-        std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
-        std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
-        std::cout << "drone_latitude:" << drone_latitude << '\n';
-        std::cout << "drone_x norm:" << x_d + 2681500 << '\n';
-        std::cout << "drone_longitude:" << drone_longitude << '\n';
-        std::cout << "drone_y norm:" << y_d + 4291460 << '\n';
+        float xLast = R*std::cos(last_waypoint_latitude*(M_PI/180.0))*std::cos(last_waypoint_longitude*(M_PI/180.0));
+        float yLast = R*std::cos(drone_latitude*(M_PI/180.0))*std::sin(drone_longitude*(M_PI/180.0));
+        distance_from_last_w = std::sqrt(std::pow(x_d-xLast,2)+std::pow(y_d-yLast,2));      //vzdalenost od posledniho waypointu
+        std::cout << "distance_from_last_w:" << distance_from_last_w << '\n';
+
+        //std::cout << "next_waypoint_latitude:" << next_waypoint_latitude << '\n';
+        //std::cout << "next_waypoint_longitude:" << next_waypoint_longitude << '\n';
+        //std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
+        //std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
+        //std::cout << "drone_latitude:" << drone_latitude << '\n';
+        //std::cout << "drone_x norm:" << x_d + 2681500 << '\n';
+        //std::cout << "drone_longitude:" << drone_longitude << '\n';
+        //std::cout << "drone_y norm:" << y_d + 4291460 << '\n';
         std::cout << "distance_to_line:" << distance_to_line << '\n';
+    }
 
+    void FlyMission::avoid()
+    {
         //float obstacle_distance = depthValue;   //vzdalenost prekazky (hloubka stredu image)
-        float obstacle_distance = 0.01;
+        float obstacle_distance = 10.01;
         float obstacle_threshold = 0.1;         //min. vzdalenost prekazky
-        float line_threshold = 1.5;             //vzdalenost od cary pro navrat k misi
+        float line_threshold = 5;             //vzdalenost od cary pro navrat k misi
         
         float sirka = width;
-        std::cout << "depthValue:" << obstacle_distance << '\n';
-        std::cout << "width(cbDepth):" << sirka << '\n';
+        //std::cout << "depthValue:" << obstacle_distance << '\n';
+        //std::cout << "width(cbDepth):" << sirka << '\n';
 
-
-        if(obstacle_distance > obstacle_threshold){
+        //if(obstacle_distance < obstacle_threshold){
+        if(distance_from_last_w > 4.5 && distance_from_last_w < 6.5){          
             std::cout << "Obstacle detected! Pausing mission.\n";
+            std::cout << "distance_to_line:" << distance_to_line << '\n';
             const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
 
             if (pause_mission_result != mavsdk::Mission::Result::Success) {
@@ -215,14 +224,30 @@ namespace mission
                 return;
             }
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 45.0f});  //otoceni po smeru hodin, 45 stupnu/s
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 50.0f});  //otoceni po smeru hodin, 50 stupnu/s
             std::cout << "Avoiding obstacle...\n";
-            sleep_for(seconds(2));
-            _offboard.get()->set_velocity_body({5.0f, 0.0f, 0.0f, -10.0f}); //let dopredu s otacenim
+            sleep_for(std::chrono::milliseconds(2500));
+            _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, -25.0f}); //let dopredu s otacenim
 
-            sleep_for(seconds(5));  //chvili pockat, aby se dron vzdalil od cary
+            std::cout << "distance_to_line:" << distance_to_line << '\n';
 
+            sleep_for(seconds(10));  //chvili pockat, aby se dron vzdalil od cary
+
+            std::cout << "Obstacle avoided, returning to original course.\n";
+            mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
+            if(offboard_result2 != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard stop failed: " << offboard_result2 << '\n';
+                    return;
+            }
+
+            const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
+            if (start_mission_again_result != mavsdk::Mission::Result::Success) {
+                    std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
+            }
+
+            /*
             if(distance_to_line < line_threshold) {   //pokud se dron opet nachazi na puvodni care, znova se pokracuje v misi
+                std::cout << "distance_to_line:" << distance_to_line << '\n';
                 std::cout << "Obstacle avoided, returning to original course.\n";
                 mavsdk::Offboard::Result offboard_result = _offboard.get()->stop();    //switch z offboard modu
 
@@ -236,7 +261,7 @@ namespace mission
                 if (start_mission_again_result != mavsdk::Mission::Result::Success) {
                     std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
                 }
-            }
+            }*/
         }
     }
 
@@ -256,8 +281,6 @@ namespace mission
             waypoint = mission_progress.current;    //index nasledujiciho waypointu
         });
 
-        //_offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
-
         drone_start_pos = _telemetry->position();    //startovni pozice dronu
 
         mavsdk::Mission::Result start_mission_result = _mission.get()->start_mission();     //start mise
@@ -268,11 +291,12 @@ namespace mission
         
         while (!_mission.get()->is_mission_finished().second) {
             avoid();
-            publishPath();
-            //publishDepth();
-            sleep_for(seconds(1));
+            position();
+            //publishPath();
+            publishDepth();
+            sleep_for(std::chrono::milliseconds(500));
         }
-
+/*
         // We are done, and can do RTL to go home.
         std::cout << "Commanding RTL...\n";
         const Action::Result rtl_result = _action.get()->return_to_launch();
@@ -281,7 +305,7 @@ namespace mission
             //return 1;
         }
         std::cout << "Commanded RTL.\n";
-
+*/
         // We need to wait a bit, otherwise the armed state might not be correct yet.
         sleep_for(seconds(2));
 
@@ -297,10 +321,20 @@ namespace mission
         std::cout << "Creating and uploading mission\n";
 
         mission_items.push_back(make_mission_item(
+            37.4124,
+            -121.9985,
+            20.0f,      //14 prekazky, 20 bez
+            5.0f,
+            false,
+            -90.0f,
+            30.0f,
+            mavsdk::Mission::MissionItem::CameraAction::None));
+
+        mission_items.push_back(make_mission_item(
             37.4128,
             -121.9995,
-            20.0f,      //14 prekazky, 20 bez
-            10.0f,
+            20.0f,
+            5.0f,
             false,
             -90.0f,
             30.0f,
@@ -310,7 +344,7 @@ namespace mission
             37.4137,
             -121.9993,
             20.0f,
-            10.0f,
+            5.0f,
             false,
             -90.0f,
             30.0f,
@@ -320,7 +354,7 @@ namespace mission
             37.4125,
             -121.9981,
             20.0f,
-            10.0f,
+            5.0f,
             true,
             -45.0f,
             0.0f,
