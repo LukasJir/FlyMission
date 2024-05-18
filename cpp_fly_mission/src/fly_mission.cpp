@@ -296,7 +296,7 @@ namespace mission
             publishDepth();
             sleep_for(std::chrono::milliseconds(500));
         }
-/*
+
         // We are done, and can do RTL to go home.
         std::cout << "Commanding RTL...\n";
         const Action::Result rtl_result = _action.get()->return_to_launch();
@@ -305,7 +305,7 @@ namespace mission
             //return 1;
         }
         std::cout << "Commanded RTL.\n";
-*/
+
         // We need to wait a bit, otherwise the armed state might not be correct yet.
         sleep_for(seconds(2));
 
