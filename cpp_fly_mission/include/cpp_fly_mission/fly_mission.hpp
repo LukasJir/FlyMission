@@ -72,6 +72,8 @@ namespace mission
         std::atomic<uint32_t> height;
         std::atomic<float> depthValue;
 
+        bool in_air;
+
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
         void cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg);
 
