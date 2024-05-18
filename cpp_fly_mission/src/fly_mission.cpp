@@ -68,13 +68,27 @@ namespace mission
         _srvTakeOff = this->create_service<std_srvs::srv::Trigger>("mission_flier/take_off", std::bind(&FlyMission::cbTakeOff, this, _1, _2));
         _srvStartMission = this->create_service<std_srvs::srv::Trigger>("mission_flier/start_mission", std::bind(&FlyMission::cbStartMission, this, _1, _2));
         _depthSub = this->create_subscription<sensor_msgs::msg::Image>("mission_flier/depth", 10, std::bind(&FlyMission::cbDepth, this, _1));
+        _depthPub = this->create_publisher<sensor_msgs::msg::Image>("mission_flier/depth", 10);
         _pathPub = this->create_publisher<nav_msgs::msg::Path>("mission_flier/path", 10); 
-        //_timer = this->create_wall_timer(std::chrono::milliseconds(500), std::bind(&FlyMission::publishPath, this));
+        
+        //_timer = this->create_wall_timer(std::chrono::milliseconds(500), std::bind(&FlyMission::cbTimer, this));
+    }
+
+    void FlyMission::publishDepth()
+    {
+        auto message = sensor_msgs::msg::Image();
+        message.height = 480;
+        message.width = 640;
+        message.encoding = "32FC1";
+        message.step = 2560;
+        message.data.resize(640 * 480);
+        RCLCPP_INFO(this->get_logger(), "Publishing depth image...");
+        _depthPub->publish(message);
     }
     
     void FlyMission::publishPath()
     {
-        //RCLCPP_INFO(this->get_logger(), "Publishing path...");
+        RCLCPP_INFO(this->get_logger(), "Publishing path...");
         nav_msgs::msg::Path path_msg;
         path_msg.header.stamp = this->get_clock()->now();
         path_msg.header.frame_id = "my_frame";
@@ -82,10 +96,9 @@ namespace mission
         geometry_msgs::msg::PoseStamped pose_stamped;
         pose_stamped.header.stamp = this->get_clock()->now();
         pose_stamped.header.frame_id = "my_frame";
-
+/*
         for (int i = 0; i < 10; ++i)
         {
-            geometry_msgs::msg::PoseStamped pose_stamped;
             pose_stamped.pose.position.x = 0.0;
             pose_stamped.pose.position.y = 0.0;
             pose_stamped.pose.position.z = i;
@@ -96,16 +109,11 @@ namespace mission
             path_msg.poses.push_back(pose_stamped);
         }
 
-        _pathPub->publish(path_msg);
+        _pathPub->publish(path_msg); */
 
-/*
-        geometry_msgs::msg::PoseStamped pose_stamped;
-        pose_stamped.header.stamp = this->get_clock()->now();
-        pose_stamped.header.frame_id = "my_frame";
-
-        pose_stamped.pose.position.x = dron_latitude;
-        pose_stamped.pose.position.y = dron_longitude;
-        pose_stamped.pose.position.z = 50.0;
+        pose_stamped.pose.position.x = x_d + 2681500;
+        pose_stamped.pose.position.y = y_d + 4291460;
+        pose_stamped.pose.position.z = 1.0;
 
         pose_stamped.pose.orientation.w = 1.0;
         pose_stamped.pose.orientation.x = 0.0;
@@ -114,12 +122,12 @@ namespace mission
 
         path_msg.poses.push_back(pose_stamped);
 
-        _pathPub->publish(path_msg); */
+        _pathPub->publish(path_msg); 
     }
 
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
     {
-        RCLCPP_INFO(this->get_logger(), "Getting depth...");
+        RCLCPP_INFO(this->get_logger(), "Received depth image with height: %d, width: %d", msg->height, msg->width);
         width = msg->width;
         height = msg->height;
         uint32_t x_center = width/2;
@@ -152,13 +160,21 @@ namespace mission
         drone_latitude = drone_pos.latitude_deg;     //aktualni zem. sirka dronu
         drone_longitude = drone_pos.longitude_deg;   //aktualni zem. vyska dronu
 
-        p1 = {last_waypoint_latitude, last_waypoint_longitude};
-        p2 = {next_waypoint_latitude, next_waypoint_longitude};
-        p_d = {drone_latitude, drone_longitude};
+        p1 = {last_waypoint_latitude*(M_PI/180.0), last_waypoint_longitude*(M_PI/180.0)};
+        p2 = {next_waypoint_latitude*(M_PI/180.0), next_waypoint_longitude*(M_PI/180.0)};
+        p_d = {drone_latitude*(M_PI/180.0), drone_longitude*(M_PI/180.0)};
 
-        float citatel = std::fabs((p2[0]-p1[0])*(p_d[1]-p1[1]) - (p_d[0]-p1[0])*(p2[1]-p1[1]));
-        float jmenovatel = std::sqrt(std::pow(p2[0]-p1[0],2)+std::pow(p2[1]-p1[1],2));
-        float distance_to_line = citatel/jmenovatel;   //vzdalenost dronu od cary
+        double R = 6371000;
+        float x1 = R*std::cos(p1[0])*std::cos(p1[1]);
+        float y1 = R*std::cos(p1[0])*std::sin(p1[1]);
+        float x2 = R*std::cos(p2[0])*std::cos(p2[1]);
+        float y2 = R*std::cos(p2[0])*std::sin(p2[1]);
+        x_d = R*std::cos(p_d[0])*std::cos(p_d[1]);
+        y_d = R*std::cos(p_d[0])*std::sin(p_d[1]);
+
+        float citatel = std::fabs((x2-x1)*(y_d-y1) - (x_d-x1)*(y2-y1));
+        float jmenovatel = std::sqrt(std::pow(x2-x1,2)+std::pow(y2-y1,2));
+        float distance_to_line = citatel/jmenovatel;            //vzdalenost dronu od cary
 
         std::cout << "waypoint:" << waypoint << '\n';
         std::cout << "next_waypoint_latitude:" << next_waypoint_latitude << '\n';
@@ -166,18 +182,21 @@ namespace mission
         std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
         std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
         std::cout << "drone_latitude:" << drone_latitude << '\n';
+        std::cout << "drone_x norm:" << x_d + 2681500 << '\n';
         std::cout << "drone_longitude:" << drone_longitude << '\n';
+        std::cout << "drone_y norm:" << y_d + 4291460 << '\n';
         std::cout << "distance_to_line:" << distance_to_line << '\n';
-        
-        float obstacle_distance = depthValue;   //vzdalenost prekazky (hloubka stredu image)
-        //float obstacle_distance = 0.01;
+
+        //float obstacle_distance = depthValue;   //vzdalenost prekazky (hloubka stredu image)
+        float obstacle_distance = 0.01;
         float obstacle_threshold = 0.1;         //min. vzdalenost prekazky
+        float line_threshold = 1.5;             //vzdalenost od cary pro navrat k misi
         
         float sirka = width;
         std::cout << "depthValue:" << obstacle_distance << '\n';
         std::cout << "width(cbDepth):" << sirka << '\n';
 
-/*
+
         if(obstacle_distance > obstacle_threshold){
             std::cout << "Obstacle detected! Pausing mission.\n";
             const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
@@ -186,6 +205,8 @@ namespace mission
                 std::cerr << "Failed to pause mission:" << pause_mission_result << '\n';
             }
             std::cout << "Mission paused, switching to offboard mode.\n";
+
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
             mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
 
@@ -201,7 +222,7 @@ namespace mission
 
             sleep_for(seconds(5));  //chvili pockat, aby se dron vzdalil od cary
 
-            if(distance_to_line < 0.1) {   //pokud se dron opet nachazi na puvodni care, znova se pokracuje v misi
+            if(distance_to_line < line_threshold) {   //pokud se dron opet nachazi na puvodni care, znova se pokracuje v misi
                 std::cout << "Obstacle avoided, returning to original course.\n";
                 mavsdk::Offboard::Result offboard_result = _offboard.get()->stop();    //switch z offboard modu
 
@@ -216,7 +237,7 @@ namespace mission
                     std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
                 }
             }
-        }*/
+        }
     }
 
     void FlyMission::cbStartMission(const std::shared_ptr<std_srvs::srv::Trigger::Request> aRequest, const std::shared_ptr<std_srvs::srv::Trigger::Response> aResponse)
@@ -235,7 +256,7 @@ namespace mission
             waypoint = mission_progress.current;    //index nasledujiciho waypointu
         });
 
-        _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
+        //_offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
         drone_start_pos = _telemetry->position();    //startovni pozice dronu
 
@@ -248,9 +269,10 @@ namespace mission
         while (!_mission.get()->is_mission_finished().second) {
             avoid();
             publishPath();
+            //publishDepth();
             sleep_for(seconds(1));
         }
-/*
+
         // We are done, and can do RTL to go home.
         std::cout << "Commanding RTL...\n";
         const Action::Result rtl_result = _action.get()->return_to_launch();
@@ -259,7 +281,7 @@ namespace mission
             //return 1;
         }
         std::cout << "Commanded RTL.\n";
-*/
+
         // We need to wait a bit, otherwise the armed state might not be correct yet.
         sleep_for(seconds(2));
 
@@ -277,7 +299,7 @@ namespace mission
         mission_items.push_back(make_mission_item(
             37.4128,
             -121.9995,
-            20.0f,      //14 pro prekazky
+            20.0f,      //14 prekazky, 20 bez
             10.0f,
             false,
             -90.0f,
