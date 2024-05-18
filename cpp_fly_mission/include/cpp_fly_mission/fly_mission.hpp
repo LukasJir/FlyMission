@@ -64,6 +64,9 @@ namespace mission
 
         std::atomic<float> x_d;
         std::atomic<float> y_d;
+        std::atomic<float> distance_to_line;
+
+        std::atomic<float> distance_from_last_w;
 
         std::atomic<uint32_t> width;
         std::atomic<uint32_t> height;
@@ -97,6 +100,7 @@ namespace mission
 
         void publishPath();
 
+        void position();
         void avoid();
     };
 }
