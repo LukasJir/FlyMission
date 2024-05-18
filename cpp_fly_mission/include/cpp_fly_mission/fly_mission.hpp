@@ -62,6 +62,9 @@ namespace mission
         std::vector<float> p2;
         std::vector<float> p_d;
 
+        std::atomic<float> x_d;
+        std::atomic<float> y_d;
+
         std::atomic<uint32_t> width;
         std::atomic<uint32_t> height;
         std::atomic<float> depthValue;
@@ -85,8 +88,12 @@ namespace mission
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _depthSub;
         void cbDepth(const sensor_msgs::msg::Image::SharedPtr msg);
 
+        rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr _depthPub;
+        void publishDepth();
+
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr _pathPub;
-        rclcpp::TimerBase::SharedPtr _timer;
+        //rclcpp::TimerBase::SharedPtr _timer;
+        //void cbTimer();
 
         void publishPath();
 
