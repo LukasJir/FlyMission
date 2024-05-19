@@ -70,7 +70,9 @@ namespace mission
 
         std::atomic<uint32_t> width;
         std::atomic<uint32_t> height;
-        std::atomic<float> depthValue;
+        std::atomic<float> depthValue_center;
+        std::atomic<float> depthValue_left;
+        std::atomic<float> depthValue_right;
 
         bool in_air;
 
