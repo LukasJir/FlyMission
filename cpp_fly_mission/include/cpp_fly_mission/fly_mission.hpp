@@ -78,7 +78,6 @@ namespace mission
         std::atomic<float> depthValue_right;
 
         bool in_air;
-        bool flag_avoid;
 
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
         void cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg);
@@ -103,8 +102,8 @@ namespace mission
         void publishDepth();
 
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr _pathPub;
-        rclcpp::TimerBase::SharedPtr _timer;
-        void cbTimer();
+        //rclcpp::TimerBase::SharedPtr _timer;
+        //void cbTimer();
 
         void publishPath();
 
