@@ -69,7 +69,7 @@ namespace mission
         _depthSub = this->create_subscription<sensor_msgs::msg::Image>("/depth_camera", 10, std::bind(&FlyMission::cbDepth, this, _1));
         _depthPub = this->create_publisher<sensor_msgs::msg::Image>("mission_flier/depth", 10);
         _pathPub = this->create_publisher<nav_msgs::msg::Path>("mission_flier/path", 10); 
-        //_timer = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&FlyMission::position, this));
+        _timer = this->create_wall_timer(std::chrono::milliseconds(250), std::bind(&FlyMission::avoid, this));
     }
 
     void FlyMission::publishDepth()
@@ -144,12 +144,13 @@ namespace mission
         std::cout << "depthValue_left:" << depthValue_left << '\n';
         std::cout << "depthValue_right:" << depthValue_right << '\n';
 
-        position();
+        //position();
 
         float depth_threshold = 10;
  
         if(in_air && (depthValue_center < depth_threshold || depthValue_left < depth_threshold || depthValue_right < depth_threshold)){
-            avoid();
+            //avoid();
+            flag_avoid = true;
         }
     }
 
@@ -179,6 +180,9 @@ namespace mission
         float jmenovatel = std::sqrt(std::pow(x2-x1,2)+std::pow(y2-y1,2));
         distance_to_line = citatel/jmenovatel;            //vzdalenost dronu od cary
 
+        drone_x_norm = x_d + 2681500;
+        drone_y_norm = y_d + 4291460;
+
         //float xLast = R*std::cos(last_waypoint_latitude*(M_PI/180.0))*std::cos(last_waypoint_longitude*(M_PI/180.0));
         //float yLast = R*std::cos(drone_latitude*(M_PI/180.0))*std::sin(drone_longitude*(M_PI/180.0));
         //distance_from_last_w = std::sqrt(std::pow(x_d-xLast,2)+std::pow(y_d-yLast,2));      //vzdalenost od posledniho waypointu
@@ -189,91 +193,95 @@ namespace mission
         //std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
         //std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
         //std::cout << "drone_latitude:" << drone_latitude << '\n';
-        //std::cout << "drone_x norm:" << x_d + 2681500 << '\n';
+        std::cout << "drone_x norm:" << drone_x_norm << '\n';
         //std::cout << "drone_longitude:" << drone_longitude << '\n';
-        //std::cout << "drone_y norm:" << y_d + 4291460 << '\n';
+        std::cout << "drone_y norm:" << drone_y_norm << '\n';
         //std::cout << "distance_to_line:" << distance_to_line << '\n';
     }
 
     void FlyMission::avoid()
     {
-        std::cout << "Obstacle detected! Pausing mission.\n";
-        const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
+        if(flag_avoid == true){
+            std::cout << "Obstacle detected! Pausing mission.\n";
 
-        if (pause_mission_result != mavsdk::Mission::Result::Success) {
-            std::cerr << "Failed to pause mission:" << pause_mission_result << '\n';
-        }
-        std::cout << "Mission paused, switching to offboard mode.\n";
+            const mavsdk::Mission::Result pause_mission_result = _mission.get()->pause_mission();   //pozastaveni mise
 
-        if(depthValue_right > depthValue_left){     //vyhybani vpravo
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
-
-            mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
-
-            if(offboard_result != mavsdk::Offboard::Result::Success) {
-                std::cerr << "Offboard start failed: " << offboard_result << '\n';
-                return;
+            if (pause_mission_result != mavsdk::Mission::Result::Success) {
+                std::cerr << "Failed to pause mission:" << pause_mission_result << '\n';
             }
+            std::cout << "Mission paused, switching to offboard mode.\n";
 
-            std::cout << "Going righthand.\n";
+            if(depthValue_right > depthValue_left){     //vyhybani vpravo
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
-            sleep_for(std::chrono::milliseconds(1000));
+                mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 55.0f});  //otoceni po smeru hodin, 55 stupnu/s
-            std::cout << "Avoiding obstacle...\n";
-            sleep_for(std::chrono::milliseconds(2500));
-            _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, -30.0f}); //let dopredu s otacenim
+                if(offboard_result != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard start failed: " << offboard_result << '\n';
+                    return;
+                }
 
-            sleep_for(std::chrono::milliseconds(2500));  //let 2 sekundy
+                std::cout << "Going righthand.\n";
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 20.0f});  //dron se z nejakeho duvodu po uhybnem manevru otaci, proto ho otacim proti
-            sleep_for(std::chrono::milliseconds(500));
+                sleep_for(std::chrono::milliseconds(1000));
 
-            std::cout << "Obstacle avoided, mission.\n";
-            mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
-            if(offboard_result2 != mavsdk::Offboard::Result::Success) {
-                std::cerr << "Offboard stop failed: " << offboard_result2 << '\n';
-                return;
-            }
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 55.0f});  //otoceni po smeru hodin, 55 stupnu/s
+                std::cout << "Avoiding obstacle...\n";
+ 
+                sleep_for(std::chrono::milliseconds(2500));
+                _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, -30.0f}); //let dopredu s otacenim
 
-            const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
-            if (start_mission_again_result != mavsdk::Mission::Result::Success) {
-                std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
-            }
-        } else {    //vyhybani vlevo
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
+                sleep_for(std::chrono::milliseconds(2500));  //let 2 sekundy
 
-            mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 20.0f});  //dron se z nejakeho duvodu po uhybnem manevru otaci, proto ho otacim proti
+                sleep_for(std::chrono::milliseconds(500));
 
-            if(offboard_result != mavsdk::Offboard::Result::Success) {
-                std::cerr << "Offboard start failed: " << offboard_result << '\n';
-                return;
-            }
+                std::cout << "Obstacle avoided, mission.\n";
+                mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
+                if(offboard_result2 != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard stop failed: " << offboard_result2 << '\n';
+                    return;
+                }
 
-            std::cout << "Going leftthand.\n";
+                const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
+                if (start_mission_again_result != mavsdk::Mission::Result::Success) {
+                    std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
+                }
+            } else {    //vyhybani vlevo
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
-            sleep_for(std::chrono::milliseconds(1000));
+                mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -55.0f});  //otoceni proti smeru hodin, 55 stupnu/s
-            std::cout << "Avoiding obstacle...\n";
-            sleep_for(std::chrono::milliseconds(2500));
-            _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, 30.0f}); //let dopredu s otacenim
+                if(offboard_result != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard start failed: " << offboard_result << '\n';
+                    return;
+                }
 
-            sleep_for(std::chrono::milliseconds(2500));  //let 2 sekundy
+                std::cout << "Going leftthand.\n";
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -20.0f});
-            sleep_for(std::chrono::milliseconds(500));
+                sleep_for(std::chrono::milliseconds(1000));
 
-            std::cout << "Obstacle avoided, mission.\n";
-            mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
-            if(offboard_result2 != mavsdk::Offboard::Result::Success) {
-                std::cerr << "Offboard stop failed: " << offboard_result2 << '\n';
-                return;
-            }
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -55.0f});  //otoceni proti smeru hodin, 55 stupnu/s
+                std::cout << "Avoiding obstacle...\n";
+                sleep_for(std::chrono::milliseconds(2500));
+                _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, 30.0f}); //let dopredu s otacenim
 
-            const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
-            if (start_mission_again_result != mavsdk::Mission::Result::Success) {
-                std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
+                sleep_for(std::chrono::milliseconds(2500));  //let 2 sekundy
+
+                _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -20.0f});
+                sleep_for(std::chrono::milliseconds(500));
+
+                std::cout << "Obstacle avoided, mission.\n";
+                mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
+                if(offboard_result2 != mavsdk::Offboard::Result::Success) {
+                    std::cerr << "Offboard stop failed: " << offboard_result2 << '\n';
+                    return;
+                }
+
+                const mavsdk::Mission::Result start_mission_again_result = _mission.get()->start_mission();     //znovu spusteni mise
+                if (start_mission_again_result != mavsdk::Mission::Result::Success) {
+                    std::cerr << "Returning to original course failed: " << start_mission_again_result << '\n';
+                }
             }
         }
     }
