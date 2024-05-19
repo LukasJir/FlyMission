@@ -66,6 +66,9 @@ namespace mission
         std::atomic<float> y_d;
         std::atomic<float> distance_to_line;
 
+        std::atomic<float> drone_x_norm;
+        std::atomic<float> drone_y_norm;
+
         std::atomic<float> distance_from_last_w;
 
         std::atomic<uint32_t> width;
@@ -75,6 +78,7 @@ namespace mission
         std::atomic<float> depthValue_right;
 
         bool in_air;
+        bool flag_avoid;
 
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
         void cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg);
@@ -99,8 +103,8 @@ namespace mission
         void publishDepth();
 
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr _pathPub;
-        //rclcpp::TimerBase::SharedPtr _timer;
-        //void cbTimer();
+        rclcpp::TimerBase::SharedPtr _timer;
+        void cbTimer();
 
         void publishPath();
 
