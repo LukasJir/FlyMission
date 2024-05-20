@@ -97,21 +97,26 @@ namespace mission
 /*
         for (int i = 0; i < 10; ++i)
         {
-            pose_stamped.pose.position.x = 0.0;
-            pose_stamped.pose.position.y = 0.0;
-            pose_stamped.pose.position.z = i;
-            pose_stamped.pose.orientation.w = 1.0;
+            pose_stamped.pose.position.x = i+drone_x_norm;
+            pose_stamped.pose.position.y = i+drone_y_norm;
+            pose_stamped.pose.position.z = 10;
+
+            pose_stamped.pose.orientation.w = 0.0;
             pose_stamped.pose.orientation.x = 0.0;
             pose_stamped.pose.orientation.y = 0.0;
             pose_stamped.pose.orientation.z = 0.0;
+
             path_msg.poses.push_back(pose_stamped);
         }
 
-        _pathPub->publish(path_msg); */
-
-        pose_stamped.pose.position.x = x_d + 2681500;
-        pose_stamped.pose.position.y = y_d + 4291460;
+        _pathPub->publish(path_msg); 
+*/
+        pose_stamped.pose.position.x = drone_x_norm;
+        pose_stamped.pose.position.y = drone_y_norm;
         pose_stamped.pose.position.z = 1.0;
+        
+        std::cout << "drone_x norm:" << drone_x_norm << '\n';
+        std::cout << "drone_y norm:" << drone_y_norm << '\n';
 
         pose_stamped.pose.orientation.w = 1.0;
         pose_stamped.pose.orientation.x = 0.0;
@@ -145,6 +150,7 @@ namespace mission
         std::cout << "depthValue_right:" << depthValue_right << '\n';
 
         position();
+        publishPath();
 
         float depth_threshold = 10;
  
@@ -192,9 +198,9 @@ namespace mission
         //std::cout << "last_waypoint_latitude:" << last_waypoint_latitude << '\n';
         //std::cout << "last_waypoint_longitude:" << last_waypoint_longitude << '\n';
         //std::cout << "drone_latitude:" << drone_latitude << '\n';
-        std::cout << "drone_x norm:" << drone_x_norm << '\n';
+        //std::cout << "drone_x norm:" << drone_x_norm << '\n';
         //std::cout << "drone_longitude:" << drone_longitude << '\n';
-        std::cout << "drone_y norm:" << drone_y_norm << '\n';
+        //std::cout << "drone_y norm:" << drone_y_norm << '\n';
         //std::cout << "distance_to_line:" << distance_to_line << '\n';
     }
 
