@@ -95,11 +95,11 @@ namespace mission
         pose_stamped.header.stamp = this->get_clock()->now();
         pose_stamped.header.frame_id = "my_frame";
 /*
-        for (int i = 0; i < 10; ++i)
+        for (int i = 0; i < 1000; ++i)
         {
-            pose_stamped.pose.position.x = i+drone_x_norm;
-            pose_stamped.pose.position.y = i+drone_y_norm;
-            pose_stamped.pose.position.z = 10;
+            pose_stamped.pose.position.x = drone_x_norm;
+            pose_stamped.pose.position.y = drone_y_norm;
+            pose_stamped.pose.position.z = i;
 
             pose_stamped.pose.orientation.w = 0.0;
             pose_stamped.pose.orientation.x = 0.0;
@@ -109,8 +109,8 @@ namespace mission
             path_msg.poses.push_back(pose_stamped);
         }
 
-        _pathPub->publish(path_msg); 
-*/
+        _pathPub->publish(path_msg); */
+
         pose_stamped.pose.position.x = drone_x_norm;
         pose_stamped.pose.position.y = drone_y_norm;
         pose_stamped.pose.position.z = 1.0;
@@ -217,27 +217,34 @@ namespace mission
 
         _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});   //vytvoreni nuloveho setpointu
 
-        if(depthValue_right > depthValue_left){     //vyhybani vpravo
-
-            mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
+        mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
 
             if(offboard_result != mavsdk::Offboard::Result::Success) {
                 std::cerr << "Offboard start failed: " << offboard_result << '\n';
                 return;
             }
 
+        if(depthValue_right > depthValue_left){     //vyhybani vpravo
+
             std::cout << "Going righthand.\n";
 
-            sleep_for(std::chrono::milliseconds(1000));
+            sleep_for(std::chrono::milliseconds(1000));     //chvili pockat, aby se dron plne zastavil
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 55.0f});  //otoceni po smeru hodin, 55 stupnu/s
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 45.0f});  //otoceni po smeru hodin, 45 stupnu/s
             std::cout << "Avoiding obstacle...\n";
  
-            sleep_for(std::chrono::milliseconds(2000));
+            sleep_for(std::chrono::milliseconds(2000));     // -> otoceni o 90 stupnu doprava
+
+            std::cout << "depthValue_center:" << depthValue_center << '\n';
 
             _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, 0.0f}); //let dopredu
  
-            sleep_for(std::chrono::milliseconds(600));  //let 0.6 sekund
+            sleep_for(std::chrono::milliseconds(1000));  //let 1 s
+
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -45.0f});  //otoceni proti smeru hodin, 45 stupnu/s
+            std::cout << "Avoiding obstacle...\n";
+ 
+            sleep_for(std::chrono::milliseconds(2000));     // -> otoceni o 90 stupnu zpet
 
             mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
             if(offboard_result2 != mavsdk::Offboard::Result::Success) {
@@ -253,25 +260,25 @@ namespace mission
 
         } else {    //vyhybani vlevo
 
-            mavsdk::Offboard::Result offboard_result = _offboard.get()->start();     //switch do offboard modu
-
-            if(offboard_result != mavsdk::Offboard::Result::Success) {
-                std::cerr << "Offboard start failed: " << offboard_result << '\n';
-                return;
-            }
-
             std::cout << "Going leftthand.\n";
 
-            sleep_for(std::chrono::milliseconds(1000));
+            sleep_for(std::chrono::milliseconds(1000));     //chvili pockat, aby se dron plne zastavil
 
-            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -30.0f});  //otoceni proti smeru hodin, 55 stupnu/s
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, -45.0f});  //otoceni proti smeru hodin, 45 stupnu/s
             std::cout << "Avoiding obstacle...\n";
 
-            sleep_for(std::chrono::milliseconds(2000));
+            sleep_for(std::chrono::milliseconds(2000));     // -> otoceni o 90 stupnu doleva
+
+            std::cout << "depthValue_center:" << depthValue_center << '\n';
 
             _offboard.get()->set_velocity_body({3.0f, 0.0f, 0.0f, 0.0f}); //let dopredu
 
-            sleep_for(std::chrono::milliseconds(600));  //let 0.6 sekund
+            sleep_for(std::chrono::milliseconds(1000));  //let 1 s
+
+            _offboard.get()->set_velocity_body({0.0f, 0.0f, 0.0f, 45.0f});  //otoceni po smeru hodin, 45 stupnu/s
+            std::cout << "Avoiding obstacle...\n";
+ 
+            sleep_for(std::chrono::milliseconds(2000));     // -> otoceni o 90 stupnu zpet
 
             mavsdk::Offboard::Result offboard_result2 = _offboard.get()->stop();    //switch z offboard modu
             if(offboard_result2 != mavsdk::Offboard::Result::Success) {
@@ -350,7 +357,7 @@ namespace mission
             mavsdk::Mission::MissionItem::CameraAction::None));
 
         mission_items.push_back(make_mission_item(
-            37.4134,
+            37.4135,
             -121.9993,
             14.0f,
             3.0f,
