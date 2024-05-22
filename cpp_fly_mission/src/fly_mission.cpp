@@ -72,7 +72,6 @@ namespace mission
     void FlyMission::cbDepth(const sensor_msgs::msg::Image::SharedPtr msg) 
     {
         //RCLCPP_INFO(this->get_logger(), "Received depth image with height: %d, width: %d", msg->height, msg->width);
-        sleep_for(std::chrono::milliseconds(250));
         width = msg->width;
         height = msg->height;
         uint32_t x_center = width/2;
