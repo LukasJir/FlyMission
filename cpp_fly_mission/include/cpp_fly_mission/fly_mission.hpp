@@ -69,8 +69,6 @@ namespace mission
         std::atomic<float> drone_x_norm;
         std::atomic<float> drone_y_norm;
 
-        std::atomic<float> distance_from_last_w;
-
         std::atomic<uint32_t> width;
         std::atomic<uint32_t> height;
         std::atomic<float> depthValue_center;
@@ -78,9 +76,6 @@ namespace mission
         std::atomic<float> depthValue_right;
 
         bool in_air;
-
-        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr _velocitySub;
-        void cbVelocity(const geometry_msgs::msg::Twist::SharedPtr aMsg);
 
         rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _srvUpload;
         void cbUpload(const std::shared_ptr<std_srvs::srv::Trigger::Request> aRequest, const std::shared_ptr<std_srvs::srv::Trigger::Response> aResponse);
@@ -97,15 +92,6 @@ namespace mission
 
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _depthSub;
         void cbDepth(const sensor_msgs::msg::Image::SharedPtr msg);
-
-        rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr _depthPub;
-        void publishDepth();
-
-        rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr _pathPub;
-        //rclcpp::TimerBase::SharedPtr _timer;
-        //void cbTimer();
-
-        void publishPath();
 
         void position();
         void avoid();
